@@ -1,53 +1,55 @@
-library("EBImage")
-library("grDevices")
+if("EBImage" %in% rownames(installed.packages()) == FALSE){
+  source("https://bioconductor.org/biocLite.R")
+  biocLite("EBImage")
+}
 
+library(EBImage)
+library(grDevices)
+library(dplyr)
 
-imgReduction <- function(original, height, colors){
-  img <- resize(original, h = height)
-  img_mat = imageData(img)
+imgReduction <- function(original, height, n_colors){
+  img_mat <- resize(original, h = height) %>%
+    imageData
   
-  r <- as.vector(img_mat[,,1])
-  g <- as.vector(img_mat[,,2])
-  b <- as.vector(img_mat[,,3])
-  pixels <- cbind(r, g, b)
-  colnames(pixels) <- c("R", "G", "B")
-  pixels <- as.data.frame(pixels)
-
-  lab_pix = convertColor(pixels, from="Apple RGB", to="Lab")
+  # Image data stored as 3d array, with R, G, and B values in separate 2d 
+  # matrices of (width) x (height) pixels. For clustering by color, I think 
+  # we don't care about the relative positions of the pixels.
+  pixels <- cbind(as.vector(img_mat[,,1]), #R
+                  as.vector(img_mat[,,2]), #G
+                  as.vector(img_mat[,,3])) #B
   
-  cl <- kmeans(x = lab_pix, centers = colors, nstart=10, iter.max = 100)
+  # Convert to Lab color space so that using Euclidean distance in k-means 
+  # makes slightly more sense (to the human eye)
+  lab_pix <- convertColor(pixels, from="Apple RGB", to="Lab")
   
-  new_pix <- fitted(cl)
-  new_pix = convertColor(new_pix, from="Lab", to="Apple RGB")
-  colnames(new_pix) <- c("R", "G", "B")
-  new_pix = as.data.frame(new_pix)
-  new_r <- matrix(new_pix$R, ncol=ncol(img_mat))
-  new_g <- matrix(new_pix$G, ncol=ncol(img_mat))
-  new_b <- matrix(new_pix$B, ncol=ncol(img_mat))
+  # Perform k-means clustering on pixels w/k as number of colors specified by user
+  cluster.fit <- kmeans(x = lab_pix, centers = n_colors, nstart=10, iter.max = 100)
   
-  new_img_data <- array(c(new_r, new_g, new_b), c(nrow(img_mat), ncol(img_mat), 3))
-  new_img <- Image(new_img_data, c(nrow(img_mat), ncol(img_mat), 3), "Color")
+  # Use cluster centers to reassign pixels for pattern
+  new_pix <- fitted(cluster.fit) %>%
+    convertColor(from="Lab", to="Apple RGB")
+  new_img <- array(c(matrix(new_pix[,1], ncol=ncol(img_mat)), #R
+                          matrix(new_pix[,2], ncol=ncol(img_mat)), #G
+                          matrix(new_pix[,3], ncol=ncol(img_mat))), #B
+                        c(nrow(img_mat), ncol(img_mat), 3)) %>%
+    Image(c(nrow(img_mat), ncol(img_mat), 3), "Color")
   
-  pal <- as.data.frame(cl$centers)
-  pal = convertColor(pal, from="Lab", to="Apple RGB")
-  pal = pal[rep(seq_len(nrow(pal)), each=100),]
-  colnames(pal) <- c("R", "G", "B")
-  pal = as.data.frame(pal)
+  # Make color palette to display alongside pattern
+  pal <- cluster.fit$center %>%
+    as.data.frame %>%
+    convertColor(from="Lab", to="Apple RGB") %>%
+    .[rep(seq_len(nrow(.)), each=100),]
+  pal_img <- array(c(matrix(pal[,1], ncol=nrow(pal)/10), #R
+                      matrix(pal[,2], ncol=nrow(pal)/10), #G
+                      matrix(pal[,3], ncol=nrow(pal)/10)), #B
+                    c(10, nrow(pal)/10, 3)) %>%
+    Image(c(10, nrow(pal)/10, 3), "Color")
   
-  pal_r <- matrix(pal$R, ncol=nrow(pal)/10)
-  pal_g <- matrix(pal$G, ncol=nrow(pal)/10)
-  pal_b <- matrix(pal$B, ncol=nrow(pal)/10)
-  
-  
-  pal_data <- array(c(pal_r, pal_g, pal_b), c(10, nrow(pal)/10, 3))
-  pal_img <- Image(pal_data, c(10, nrow(pal)/10, 3), "Color")
-  
-  output <- list(pattern=new_img, palette=pal_img, pal_val=cl$centers)
-  return(output)
+  list(pattern=new_img, palette=pal_img, pal_val=cluster.fit$centers)
 }
 
 
 #Testing
-out = imgReduction(readImage("test_pic_botany.jpg"), height=125, colors=8)
+out <- imgReduction(readImage("test_pic_botany.jpg"), height=125, n_colors=8)
 display(out$palette)
 display(out$pattern)
