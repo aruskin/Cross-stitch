@@ -9,7 +9,8 @@ fluidPage(
     column(4, 
            numericInput('height', 'Desired height of project (in stiches):', value=100),
            sliderInput("ncolors", "Number of colors:", min = 1, max = 40, 
-                       value=10, step=1)),
+                       value=10, step=1),
+           actionButton('button', 'Make pattern')),
           
     column(4, 
            plotOutput("new"),
