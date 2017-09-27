@@ -6,11 +6,10 @@ shinyServer(function(input, output){
   
   output$orig <- renderPlot({
     inFile <- input$inImage
-    validate(
-      need(!is.null(inFile), "Not a valid file input")
-    )
-    stdObjects$origImg <- load.image(inFile$datapath)
-    plot(stdObjects$origImg)
+    if(!is.null(inFile)){
+      stdObjects$origImg <- load.image(inFile$datapath)
+      plot(stdObjects$origImg)
+    }
   })
   
   observeEvent(input$button, {
@@ -45,17 +44,23 @@ shinyServer(function(input, output){
       pal <- cluster.fit$center %>%
         as.data.frame %>%
         convertColor(from="Lab", to="Apple RGB") %>%
-        .[rep(seq_len(nrow(.)), each=100),]
-      stdObjects$palette <- array(c(matrix(pal[,1], ncol=nrow(pal)/10), #R
-                                    matrix(pal[,2], ncol=nrow(pal)/10), #G
-                                    matrix(pal[,3], ncol=nrow(pal)/10)), #B
-                                  c(10, nrow(pal)/10, 3)) %>%
+        .[rep(seq_len(nrow(.)), 100),]
+      stdObjects$palette <- array(c(matrix(pal[,1], ncol=nrow(pal)/10, byrow=TRUE), #R
+                                    matrix(pal[,2], ncol=nrow(pal)/10, byrow=TRUE), #G
+                                    matrix(pal[,3], ncol=nrow(pal)/10, byrow=TRUE)), #B
+                                  c(nrow(pal)/10, 10, 3)) %>%
         as.cimg
     }
   })
+  
   output$new <- renderPlot({
     if(!is.null(stdObjects$newImg))
       plot(stdObjects$newImg)
+  })
+  
+  output$pal <- renderPlot({
+    if(!is.null(stdObjects$palette))
+      plot(stdObjects$palette, axes=FALSE)
   })
   
   output$dlPattern <- downloadHandler(
@@ -63,6 +68,14 @@ shinyServer(function(input, output){
     content = function(file) {
       if(!is.null(stdObjects$newImg))
         save.image(stdObjects$newImg, file)
+    }
+  )
+  
+  output$dlPalette <- downloadHandler(
+    filename = "mypalette.png",
+    content = function(file) {
+      if(!is.null(stdObjects$palette))
+        save.image(stdObjects$palette, file)
     }
   )
 })
